@@ -606,7 +606,7 @@ def usp_crossattn_multi_forward_multitalk(self,
         per_frame = torch.zeros(audio_tokens_per_frame * human_num, dtype=encoder_k.dtype).to(encoder_k.device)
         per_frame[:audio_tokens_per_frame] = (self.rope_h1[0] + self.rope_h1[1]) / 2
         per_frame[audio_tokens_per_frame:] = (self.rope_h2[0] + self.rope_h2[1]) / 2
-        encoder_pos = torch.stack([torch.concat([per_frame] * N_t, dim=0)] * batch_size, dim=0)
+        encoder_pos = torch.stack([torch.concat([per_frame] * N_a, dim=0)] * batch_size, dim=0)
         encoder_k = self.rope_1d(encoder_k, encoder_pos)
 
         # get attn
