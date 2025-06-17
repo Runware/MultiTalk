@@ -36,19 +36,19 @@ def parallel_context(model, use_usp, ulysses_size, ring_size, para_batch_size):
             ulysses_degree=ulysses_size,
         )
 
-        # Save original attention forwards
-        for block in model.blocks:
-            original_attn_forwards.append(block.self_attn.forward)
-            block.self_attn.forward = types.MethodType(
-                usp_attn_forward_multitalk, block.self_attn
-            )
-            original_crossattn_forwards.append(block.audio_cross_attn.forward)
-            block.audio_cross_attn.forward = types.MethodType(
-                usp_crossattn_multi_forward_multitalk, block.audio_cross_attn
-            )
+        use_usp = ulysses_size * ring_size > 1
+        if use_usp:
+            for block in model.blocks:
+                original_attn_forwards.append(block.self_attn.forward)
+                block.self_attn.forward = types.MethodType(
+                    usp_attn_forward_multitalk, block.self_attn
+                )
+                original_crossattn_forwards.append(block.audio_cross_attn.forward)
+                block.audio_cross_attn.forward = types.MethodType(
+                    usp_crossattn_multi_forward_multitalk, block.audio_cross_attn
+                )
 
-        # Patch model forward
-        model.forward = types.MethodType(usp_dit_forward_multitalk, model)
+            model.forward = types.MethodType(usp_dit_forward_multitalk, model)
         sp_size = get_sequence_parallel_world_size()
         print("Using sequence parallel size:", sp_size)
     else:

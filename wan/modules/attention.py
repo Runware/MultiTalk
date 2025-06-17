@@ -318,11 +318,12 @@ class SingleStreamMutiAttention(SingleStreamAttention):
                 encoder_hidden_states: torch.Tensor,
                 shape=None,
                 x_ref_attn_map=None,
-                human_num=None) -> torch.Tensor:
+                human_num=None,
+                enable_sp = False) -> torch.Tensor:
 
         encoder_hidden_states = encoder_hidden_states.squeeze(0)
         if human_num == 1:
-            return super().forward(x, encoder_hidden_states, shape)
+            return super().forward(x, encoder_hidden_states, shape, enable_sp=enable_sp)
 
         N_t, _, _ = shape
         x = rearrange(x, "B (N_t S) C -> (B N_t) S C", N_t=N_t)
@@ -371,7 +372,6 @@ class SingleStreamMutiAttention(SingleStreamAttention):
 
         if self.qk_norm:
             encoder_k = self.add_k_norm(encoder_k)
-
 
         per_frame = torch.zeros(N_a, dtype=encoder_k.dtype).to(encoder_k.device)
         per_frame[:per_frame.size(0)//2] = (self.rope_h1[0] + self.rope_h1[1]) / 2

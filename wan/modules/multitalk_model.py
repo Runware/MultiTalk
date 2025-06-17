@@ -59,8 +59,8 @@ def rope_apply(x, grid_sizes, freqs):
             freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
             freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
             freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1)
-        ],
-                            dim=-1).reshape(seq_len, 1, -1)
+        ], dim=-1).reshape(seq_len, 1, -1)
+
         freqs_i = freqs_i.to(device=x_i.device)
         x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
         x_i = torch.cat([x_i, x[i, seq_len:]])
@@ -130,7 +130,7 @@ class WanSelfAttention(nn.Module):
         self.norm_q = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
         self.norm_k = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
 
-    def forward(self, x, seq_lens, grid_sizes, freqs, ref_target_masks=None):
+    def forward(self, x, seq_lens, grid_sizes, freqs, ref_target_masks=None, enable_sp=False):
         b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
 
         # query, key, value function
@@ -158,7 +158,7 @@ class WanSelfAttention(nn.Module):
         x = self.o(x)
         with torch.no_grad():
             x_ref_attn_map = get_attn_map_with_target(q.type_as(x), k.type_as(x), grid_sizes[0],
-                                                    ref_target_masks=ref_target_masks)
+                                                    ref_target_masks=ref_target_masks, enable_sp=enable_sp)
 
         return x, x_ref_attn_map
 
@@ -270,6 +270,7 @@ class WanAttentionBlock(nn.Module):
         audio_embedding=None,
         ref_target_masks=None,
         human_num=None,
+        enable_sp=False,
     ):
 
         dtype = x.dtype
@@ -281,7 +282,7 @@ class WanAttentionBlock(nn.Module):
         # self-attention
         y, x_ref_attn_map = self.self_attn(
             (self.norm1(x).float() * (1 + e[1]) + e[0]).type_as(x), seq_lens, grid_sizes,
-            freqs, ref_target_masks=ref_target_masks)
+            freqs, ref_target_masks=ref_target_masks, enable_sp = enable_sp)
         with amp.autocast(dtype=torch.float32):
             x = x + y * e[2]
 
@@ -292,7 +293,7 @@ class WanAttentionBlock(nn.Module):
 
         # cross attn of audio
         x_a = self.audio_cross_attn(self.norm_x(x), encoder_hidden_states=audio_embedding,
-                                        shape=grid_sizes[0], x_ref_attn_map=x_ref_attn_map, human_num=human_num)
+                                        shape=grid_sizes[0], x_ref_attn_map=x_ref_attn_map, human_num=human_num, enable_sp=enable_sp)
         x = x + x_a
 
         y = self.ffn((self.norm2(x).float() * (1 + e[4]) + e[3]).to(dtype))

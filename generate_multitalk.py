@@ -473,7 +473,7 @@ def generate(args):
         rank=rank,
         t5_fsdp=args.t5_fsdp,
         dit_fsdp=args.dit_fsdp,
-        use_usp=(args.ulysses_size > 1 or args.ring_size > 1 or args.para_batch_size > 1),
+        use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
         t5_cpu=args.t5_cpu,
     )
 

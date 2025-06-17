@@ -1,4 +1,5 @@
 # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
+from gc import enable
 import numpy as np
 import torch
 import torch.nn as nn
@@ -23,6 +24,8 @@ from ..modules.attention import SingleStreamAttention, SingleStreamMutiAttention
 def pad_freqs(original_tensor, target_len):
     seq_len, s1, s2 = original_tensor.shape
     pad_size = target_len - seq_len
+    if pad_size <= 0:
+        return original_tensor
     padding_tensor = torch.ones(
         pad_size,
         s1,
@@ -388,13 +391,7 @@ def usp_dit_forward_multitalk(
         else:
             raise ValueError(f"Unsupported batch size {bs} for teacache.")
 
-    # Context Parallel
-    x = torch.chunk(
-        x, get_sequence_parallel_world_size(),
-        dim=1)[get_sequence_parallel_rank()]
-
     ## CFG Parallel
-    # print("Grid Sizes: ", grid_sizes.shape)
     grid_sizes = torch.chunk(
         grid_sizes, get_classifier_free_guidance_world_size(), dim=0
     )[get_classifier_free_guidance_rank()]
@@ -419,7 +416,8 @@ def usp_dit_forward_multitalk(
         audio_embedding=audio_embedding,
         ref_target_masks=token_ref_target_masks,
         human_num=human_num,
-        )
+        enable_sp=get_sequence_parallel_world_size() > 1,
+    )
 
     # CFG Parallel
     x = torch.chunk(

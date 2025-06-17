@@ -554,7 +554,7 @@ class MultiTalkPipeline:
                     'clip_fea': clip_context,
                     'seq_len': max_seq_len,
                     'y': y,
-                    'audio': audio_embs,
+                    'audio': [audio_embs],
                     'ref_target_masks': ref_target_masks
                 }
 
@@ -564,7 +564,7 @@ class MultiTalkPipeline:
                     'clip_fea': clip_context,
                     'seq_len': max_seq_len,
                     'y': y,
-                    'audio': audio_embs,
+                    'audio': [audio_embs],
                     'ref_target_masks': ref_target_masks
                 }
 
@@ -574,7 +574,7 @@ class MultiTalkPipeline:
                     'clip_fea': clip_context,
                     'seq_len': max_seq_len,
                     'y': y,
-                    'audio': torch.zeros_like(audio_embs)[-1:],
+                    'audio': [torch.zeros_like(audio_embs)[-1:]],
                     'ref_target_masks': ref_target_masks
                 }
 
