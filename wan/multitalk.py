@@ -26,7 +26,7 @@ from .modules.multitalk_model import WanModel, WanLayerNorm, WanRMSNorm
 from .modules.t5 import T5EncoderModel, T5LayerNorm, T5RelativeEmbedding
 from .modules.vae import WanVAE, CausalConv3d, RMS_norm, Upsample
 from .utils.multitalk_utils import MomentumBuffer, adaptive_projected_guidance
-from src.vram_management import AutoWrappedLinear, AutoWrappedModule, enable_vram_management
+from ..src.vram_management import AutoWrappedLinear, AutoWrappedModule, enable_vram_management
 
 
 def torch_gc():
@@ -88,7 +88,7 @@ def timestep_transform(
 
 
 
-class MultiTalkPipeline:
+class MultiTalkPipeline(nn.Module):
 
     def __init__(
         self,
@@ -127,6 +127,7 @@ class MultiTalkPipeline:
             init_on_cpu (`bool`, *optional*, defaults to True):
                 Enable initializing Transformer Model on CPU. Only works without FSDP or USP.
         """
+        super().__init__()
         self.device = torch.device(f"cuda:{device_id}")
         self.config = config
         self.rank = rank

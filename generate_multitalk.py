@@ -13,16 +13,15 @@ import random
 
 import torch
 import torch.distributed as dist
-from PIL import Image
 import subprocess
 
-import wan
-from wan.configs import SIZE_CONFIGS, SUPPORTED_SIZES, WAN_CONFIGS
-from wan.utils.utils import cache_image, cache_video, str2bool
-from wan.utils.multitalk_utils import save_video_ffmpeg
+from . import wan
+from .wan.configs import SIZE_CONFIGS, SUPPORTED_SIZES, WAN_CONFIGS
+from .wan.utils.utils import cache_image, cache_video, str2bool
+from .wan.utils.multitalk_utils import save_video_ffmpeg
 
 from transformers import Wav2Vec2FeatureExtractor
-from src.audio_analysis.wav2vec2 import Wav2Vec2Model
+from .src.audio_analysis.wav2vec2 import Wav2Vec2Model
 
 import librosa
 import pyloudnorm as pyln

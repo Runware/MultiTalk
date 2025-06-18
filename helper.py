@@ -1,22 +1,21 @@
 from PIL import Image
 
 from huggingface_hub import snapshot_download
-from wan.configs import SIZE_CONFIGS, SUPPORTED_SIZES, WAN_CONFIGS
-from wan import MultiTalkPipeline
+from .wan.configs import WAN_CONFIGS
+from .wan import MultiTalkPipeline
 
 from transformers import Wav2Vec2FeatureExtractor
-from src.audio_analysis.wav2vec2 import Wav2Vec2Model
+from .src.audio_analysis.wav2vec2 import Wav2Vec2Model
 
-from wan.multitalk_context_mananger import parallel_context
-from wan.utils.multitalk_utils import save_video_ffmpeg
+from .wan.multitalk_context_mananger import parallel_context
+from .wan.utils.multitalk_utils import save_video_ffmpeg
 
-from generate_multitalk import (
+from .generate_multitalk import (
     get_embedding,
     audio_prepare_single,
     audio_prepare_multi,
 )
 def create_pipeline(
-        # multitalk_model = "/runware/steph/MultiTalk/weights/Wan2.1-I2V-14B-480P/",
         multitalk_model = "Runware/multitalk-14B-480P",
         wav2vec2_model = "TencentGameMate/chinese-wav2vec2-base",
         device = "cuda",

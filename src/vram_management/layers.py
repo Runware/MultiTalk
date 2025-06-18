@@ -2,7 +2,7 @@ import copy
 
 import torch
 
-from src.utils import init_weights_on_device
+from ..utils import init_weights_on_device
 
 
 def cast_to(weight, dtype, device):

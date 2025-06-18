@@ -22,12 +22,14 @@ def parallel_context(model, use_usp, ulysses_size, ring_size, para_batch_size):
 
     if ulysses_size > 1 or ring_size > 1 or para_batch_size > 1:
         world_size=dist.get_world_size()
-        rank = dist.get_rank()
         assert ulysses_size * ring_size * para_batch_size == world_size, f"The number of ulysses_size and ring_size should be equal to the world size."
         assert para_batch_size == 1 or para_batch_size == 3, f"The para_batch_size should be 1 or 3, but got {para_batch_size}."
 
+        rank = dist.get_rank()
         init_distributed_environment(
-            rank=rank, world_size=world_size)
+            rank=rank, 
+            world_size=world_size
+        )
 
         initialize_model_parallel(
             classifier_free_guidance_degree=para_batch_size,
