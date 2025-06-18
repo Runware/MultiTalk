@@ -1,5 +1,6 @@
+import os
 from PIL import Image
-
+import torch
 from huggingface_hub import snapshot_download
 from .wan.configs import WAN_CONFIGS
 from .wan import MultiTalkPipeline
@@ -18,9 +19,12 @@ from .generate_multitalk import (
 def create_pipeline(
         multitalk_model = "Runware/multitalk-14B-480P",
         wav2vec2_model = "TencentGameMate/chinese-wav2vec2-base",
-        device = "cuda",
-        cache_dir = None
+        device = torch.device("cuda"),
+        cache_dir = "/runware/sd-base-api/train_model/huggingface/"
 ):
+    rank = int(os.getenv("RANK", 0))
+    torch.cuda.set_device(rank)
+
     cfg = WAN_CONFIGS['multitalk-14B']
     audio_encoder = Wav2Vec2Model.from_pretrained(wav2vec2_model, cache_dir = cache_dir).to(device)
     audio_encoder.feature_extractor._freeze_parameters()
@@ -38,6 +42,8 @@ def create_pipeline(
     pipeline =  MultiTalkPipeline(
         config=cfg,
         checkpoint_dir=multitalk_model_path,
+        rank=rank,
+        device_id=rank,
     )
 
     return audio_feature_extractor, audio_encoder, pipeline
@@ -100,15 +106,13 @@ def prepare_input_data(
 
 
 def test_helper(use_usp = True, ulysses_size=1, ring_size=1, para_batch_size=1):
-    audio_feature_extractor, audio_encoder, pipeline = create_pipeline(
-        device="cuda"
-    )
+    audio_feature_extractor, audio_encoder, pipeline = create_pipeline()
     input_data = prepare_input_data(
         prompt = "In a cozy recording studio, a man and a woman are singing together. The man, with tousled brown hair, stands to the left, wearing a light green button-down shirt. His gaze is directed towards the woman, who is smiling warmly. She, with wavy dark hair, is dressed in a black floral dress and stands to the right, her eyes closed in enjoyment. Between them is a professional microphone, capturing their harmonious voices. The background features wooden panels and various audio equipment, creating an intimate and focused atmosphere. The lighting is soft and warm, highlighting their expressions and the intimate setting. A medium shot captures their interaction closely.",
-        cond_image="examples/multi/3/multi3.png",
+        cond_image="/runware/steph/sd-base-api/third_party/multitalk/examples/multi/3/multi3.png",
         cond_audio=[
-            "examples/multi/3/1-man.WAV",
-            "examples/multi/3/1-woman.WAV"
+            "/runware/steph/sd-base-api/third_party/multitalk/examples/multi/3/1-man.WAV",
+            "/runware/steph/sd-base-api/third_party/multitalk/examples/multi/3/1-woman.WAV"
         ],
         audio_feature_extractor = audio_feature_extractor,
         audio_encoder = audio_encoder,
@@ -134,7 +138,7 @@ def test_helper(use_usp = True, ulysses_size=1, ring_size=1, para_batch_size=1):
     extra_args.apg_norm_threshold = apg_norm_threshold
 
     for i in range(2):
-        with parallel_context(pipeline.model, use_usp=use_usp, ulysses_size=ulysses_size, ring_size=ring_size, para_batch_size=para_batch_size) as sp_size:
+        with parallel_context(pipeline.model, ulysses_size=ulysses_size, ring_size=ring_size, para_batch_size=para_batch_size) as sp_size:
             video = pipeline.generate(
                 input_data,
                 size_buckget=model_scale,
@@ -147,7 +151,7 @@ def test_helper(use_usp = True, ulysses_size=1, ring_size=1, para_batch_size=1):
                 n_prompt="",
                 seed=-1,
                 offload_model=True,
-                max_frames_num=1000,
+                max_frames_num=81,
                 face_scale=0.05,
                 progress=True,
                 batched_cfg=True,

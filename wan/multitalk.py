@@ -2,10 +2,8 @@
 import gc
 import logging
 import math
-import importlib
 import os
 import random
-import sys
 import types
 from contextlib import contextmanager
 from functools import partial
@@ -13,7 +11,6 @@ from PIL import Image
 
 import numpy as np
 import torch
-import torch.cuda.amp as amp
 import torch.distributed as dist
 import torchvision.transforms as transforms
 import torch.nn.functional as F
@@ -23,11 +20,11 @@ from tqdm import tqdm
 from .distributed.fsdp import shard_model
 from .modules.clip import CLIPModel
 from .modules.multitalk_model import WanModel, WanLayerNorm, WanRMSNorm
-from .modules.t5 import T5EncoderModel, T5LayerNorm, T5RelativeEmbedding
-from .modules.vae import WanVAE, CausalConv3d, RMS_norm, Upsample
+from .modules.t5 import T5EncoderModel
+from .modules.vae import WanVAE
 from .utils.multitalk_utils import MomentumBuffer, adaptive_projected_guidance
 from ..src.vram_management import AutoWrappedLinear, AutoWrappedModule, enable_vram_management
-
+from .utils.multitalk_utils import ASPECT_RATIO_627, ASPECT_RATIO_960
 
 def torch_gc():
     torch.cuda.empty_cache()
@@ -141,7 +138,7 @@ class MultiTalkPipeline(nn.Module):
         self.text_encoder = T5EncoderModel(
             text_len=config.text_len,
             dtype=config.t5_dtype,
-            device=torch.device('cpu'),
+            device=self.device,
             checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
             tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
             shard_fn=shard_fn if t5_fsdp else None,
@@ -303,7 +300,7 @@ class MultiTalkPipeline(nn.Module):
                  audio_guide_scale=4.0,
                  n_prompt="",
                  seed=-1,
-                 offload_model=True,
+                 offload_model=False,
                  max_frames_num=1000,
                  face_scale=0.05,
                  progress=True,
@@ -346,11 +343,10 @@ class MultiTalkPipeline(nn.Module):
 
 
         # decide a proper size
-        bucket_config_module = importlib.import_module("wan.utils.multitalk_utils")
         if size_buckget == 'multitalk-480':
-            bucket_config = getattr(bucket_config_module, 'ASPECT_RATIO_627')
+            bucket_config = ASPECT_RATIO_627
         elif size_buckget == 'multitalk-720':
-            bucket_config = getattr(bucket_config_module, 'ASPECT_RATIO_960')
+            bucket_config = ASPECT_RATIO_960
 
         src_h, src_w = cond_image.height, cond_image.width
         ratio = src_h / src_w

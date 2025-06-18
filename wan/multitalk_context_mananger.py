@@ -15,19 +15,22 @@ from .distributed.xdit_context_parallel import (
 from torch import distributed as dist
 
 @contextmanager
-def parallel_context(model, use_usp, ulysses_size, ring_size, para_batch_size):
+def parallel_context(pipeline, ulysses_size, ring_size, para_batch_size):
+    use_usp = ulysses_size * ring_size > 1
+    model = pipeline.model
+
     original_attn_forwards = []
     original_crossattn_forwards = []
     original_model_forward = model.forward
 
-    if ulysses_size > 1 or ring_size > 1 or para_batch_size > 1:
+    if use_usp or para_batch_size > 1:
         world_size=dist.get_world_size()
         assert ulysses_size * ring_size * para_batch_size == world_size, f"The number of ulysses_size and ring_size should be equal to the world size."
         assert para_batch_size == 1 or para_batch_size == 3, f"The para_batch_size should be 1 or 3, but got {para_batch_size}."
 
         rank = dist.get_rank()
         init_distributed_environment(
-            rank=rank, 
+            rank=rank,
             world_size=world_size
         )
 
@@ -38,7 +41,6 @@ def parallel_context(model, use_usp, ulysses_size, ring_size, para_batch_size):
             ulysses_degree=ulysses_size,
         )
 
-        use_usp = ulysses_size * ring_size > 1
         if use_usp:
             for block in model.blocks:
                 original_attn_forwards.append(block.self_attn.forward)
@@ -52,7 +54,6 @@ def parallel_context(model, use_usp, ulysses_size, ring_size, para_batch_size):
 
             model.forward = types.MethodType(usp_dit_forward_multitalk, model)
         sp_size = get_sequence_parallel_world_size()
-        print("Using sequence parallel size:", sp_size)
     else:
         sp_size = 1
 

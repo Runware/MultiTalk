@@ -2,6 +2,7 @@
 import argparse
 import logging
 import os
+import io
 import sys
 import json
 import warnings
@@ -85,12 +86,12 @@ def _parse_args():
     parser.add_argument(
         "--ckpt_dir",
         type=str,
-        default="/runware/steph/MultiTalk/weights/Wan2.1-I2V-14B-480P",
+        default="/runware/sd-base-api/train_model/huggingface/models--Runware--multitalk-14B-480P",
         help="The path to the Wan checkpoint directory.")
     parser.add_argument(
         "--wav2vec_dir",
         type=str,
-        default="./weights/chinese-wav2vec2-base",
+        default="/runware/sd-base-api/train_model/huggingface/models--TencentGameMate--chinese-wav2vec2-base",
         help="The path to the wav2vec checkpoint directory.")
 
     parser.add_argument(
@@ -148,7 +149,7 @@ def _parse_args():
     parser.add_argument(
         "--input_json",
         type=str,
-        default='examples/multitalk_example_1.json',
+        default='/runware/steph/sd-base-api/third_party/multitalk/examples/single_example_1.json',
         help="[meta file] The condition path to generate the video.")
     parser.add_argument(
         "--motion_frame",
@@ -322,14 +323,21 @@ def extract_audio_from_video(filename, sample_rate):
     return human_speech_array
 
 def audio_prepare_single(audio_path, sample_rate=16000):
-    ext = os.path.splitext(audio_path)[1].lower()
-    if ext in ['.mp4', '.mov', '.avi', '.mkv']:
-        human_speech_array = extract_audio_from_video(audio_path, sample_rate)
-        return human_speech_array
-    else:
+    if isinstance(audio_path, bytes):
+        audio_path = io.BytesIO(audio_path)
         human_speech_array, sr = librosa.load(audio_path, sr=sample_rate)
         human_speech_array = loudness_norm(human_speech_array, sr)
-        return human_speech_array
+    elif isinstance(audio_path, str):
+        ext = os.path.splitext(audio_path)[1].lower()
+        if ext in ['.mp4', '.mov', '.avi', '.mkv']:
+            human_speech_array = extract_audio_from_video(audio_path, sample_rate)
+        else:
+            human_speech_array, sr = librosa.load(audio_path, sr=sample_rate)
+            human_speech_array = loudness_norm(human_speech_array, sr)
+    else:
+        raise ValueError(f"Unsupported audio input type: {type(audio_path)}")
+    return human_speech_array
+
 
 def generate(args):
     rank = int(os.getenv("RANK", 0))
