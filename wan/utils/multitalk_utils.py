@@ -280,7 +280,6 @@ def adaptive_projected_guidance(
     if norm_threshold > 0:
         ones = torch.ones_like(diff)
         diff_norm = diff.norm(p=2, dim=[-1, -2, -3, -4], keepdim=True)
-        print(f"diff_norm: {diff_norm}")
         scale_factor = torch.minimum(ones, norm_threshold / diff_norm)
         diff = diff * scale_factor
     diff_parallel, diff_orthogonal = project(diff, pred_cond)

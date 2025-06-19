@@ -1,4 +1,5 @@
 # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
+from itertools import batched
 import math
 import numpy as np
 import os
@@ -536,37 +537,48 @@ class WanModel(ModelMixin, ConfigMixin):
         teacache_thresh=0.2,
         sample_steps=40,
         model_scale='multitalk-480',
+        cache_start_step: float = 0,
+        cache_end_step: float = 1,
+        batched_cfg=False,
     ):
-        print("teacache_init")
         self.enable_teacache = True
+        self.batched_cfg = batched_cfg
+        if batched_cfg:
+            batched_size = 1
+        else:
+            batched_size = 3
 
-        self.__class__.cnt = 0
-        self.__class__.num_steps = sample_steps*3
-        self.__class__.teacache_thresh = teacache_thresh
-        self.__class__.accumulated_rel_l1_distance_even = 0
-        self.__class__.accumulated_rel_l1_distance_odd = 0
-        self.__class__.previous_e0_even = None
-        self.__class__.previous_e0_odd = None
-        self.__class__.previous_residual_even = None
-        self.__class__.previous_residual_odd = None
-        self.__class__.use_ret_steps = use_ret_steps
+        self.cnt = 0
+        self.num_steps = sample_steps*batched_size
+        self.teacache_thresh = teacache_thresh
+        self.accumulated_rel_l1_distance_even = 0
+        self.accumulated_rel_l1_distance_odd = 0
+        self.previous_e0_even = None
+        self.previous_e0_odd = None
+        self.previous_residual_even = None
+        self.previous_residual_odd = None
+        self.use_ret_steps = use_ret_steps
+        self.cache_start_step = cache_start_step
+        self.cache_end_step = cache_end_step
+
+        start_cache = int(cache_start_step * sample_steps)
+        end_cache = int(cache_end_step * sample_steps)
 
         if use_ret_steps:
             if model_scale == 'multitalk-480':
-                self.__class__.coefficients = [ 2.57151496e+05, -3.54229917e+04,  1.40286849e+03, -1.35890334e+01, 1.32517977e-01]
+                self.coefficients = [ 2.57151496e+05, -3.54229917e+04,  1.40286849e+03, -1.35890334e+01, 1.32517977e-01]
             if model_scale == 'multitalk-720':
-                self.__class__.coefficients = [ 8.10705460e+03,  2.13393892e+03, -3.72934672e+02,  1.66203073e+01, -4.17769401e-02]
-            self.__class__.ret_steps = 5*3
-            self.__class__.cutoff_steps = sample_steps*3
+                self.coefficients = [ 8.10705460e+03,  2.13393892e+03, -3.72934672e+02,  1.66203073e+01, -4.17769401e-02]
+            self.ret_steps = start_cache * batched_size
+            self.cutoff_steps = end_cache * batched_size
         else:
             if model_scale == 'multitalk-480':
-                self.__class__.coefficients = [-3.02331670e+02,  2.23948934e+02, -5.25463970e+01,  5.87348440e+00, -2.01973289e-01]
+                self.coefficients = [-3.02331670e+02,  2.23948934e+02, -5.25463970e+01,  5.87348440e+00, -2.01973289e-01]
 
             if model_scale == 'multitalk-720':
-                self.__class__.coefficients = [-114.36346466,   65.26524496,  -18.82220707,    4.91518089,   -0.23412683]
-            self.__class__.ret_steps = 1*3
-            self.__class__.cutoff_steps = sample_steps*3 - 3
-        print("teacache_init done")
+                self.coefficients = [-114.36346466,   65.26524496,  -18.82220707,    4.91518089,   -0.23412683]
+            self.ret_steps = batched_size
+            self.cutoff_steps = (sample_steps - 1) * batched_size
 
     def disable_teacache(self):
         self.enable_teacache = False
@@ -663,7 +675,7 @@ class WanModel(ModelMixin, ConfigMixin):
         # teacache
         if self.enable_teacache:
             modulated_inp = e0 if self.use_ret_steps else e
-            if self.cnt%3==0: # cond
+            if self.batched_cfg:
                 if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
                     should_calc_cond = True
                     self.accumulated_rel_l1_distance_cond = 0
@@ -676,32 +688,46 @@ class WanModel(ModelMixin, ConfigMixin):
                         should_calc_cond = True
                         self.accumulated_rel_l1_distance_cond = 0
                 self.previous_e0_cond = modulated_inp.clone()
-            elif self.cnt%3==1: # drop_text
-                if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
-                    should_calc_drop_text = True
-                    self.accumulated_rel_l1_distance_drop_text = 0
-                else:
-                    rescale_func = np.poly1d(self.coefficients)
-                    self.accumulated_rel_l1_distance_drop_text += rescale_func(((modulated_inp-self.previous_e0_drop_text).abs().mean() / self.previous_e0_drop_text.abs().mean()).cpu().item())
-                    if self.accumulated_rel_l1_distance_drop_text < self.teacache_thresh:
-                        should_calc_drop_text = False
+            else:
+                if self.cnt%3==0: # cond
+                    if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
+                        should_calc_cond = True
+                        self.accumulated_rel_l1_distance_cond = 0
                     else:
+                        rescale_func = np.poly1d(self.coefficients)
+                        self.accumulated_rel_l1_distance_cond += rescale_func(((modulated_inp-self.previous_e0_cond).abs().mean() / self.previous_e0_cond.abs().mean()).cpu().item())
+                        if self.accumulated_rel_l1_distance_cond < self.teacache_thresh:
+                            should_calc_cond = False
+                        else:
+                            should_calc_cond = True
+                            self.accumulated_rel_l1_distance_cond = 0
+                    self.previous_e0_cond = modulated_inp.clone()
+                elif self.cnt%3==1: # drop_text
+                    if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
                         should_calc_drop_text = True
                         self.accumulated_rel_l1_distance_drop_text = 0
-                self.previous_e0_drop_text = modulated_inp.clone()
-            else: # uncond
-                if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
-                    should_calc_uncond = True
-                    self.accumulated_rel_l1_distance_uncond = 0
-                else:
-                    rescale_func = np.poly1d(self.coefficients)
-                    self.accumulated_rel_l1_distance_uncond += rescale_func(((modulated_inp-self.previous_e0_uncond).abs().mean() / self.previous_e0_uncond.abs().mean()).cpu().item())
-                    if self.accumulated_rel_l1_distance_uncond < self.teacache_thresh:
-                        should_calc_uncond = False
                     else:
+                        rescale_func = np.poly1d(self.coefficients)
+                        self.accumulated_rel_l1_distance_drop_text += rescale_func(((modulated_inp-self.previous_e0_drop_text).abs().mean() / self.previous_e0_drop_text.abs().mean()).cpu().item())
+                        if self.accumulated_rel_l1_distance_drop_text < self.teacache_thresh:
+                            should_calc_drop_text = False
+                        else:
+                            should_calc_drop_text = True
+                            self.accumulated_rel_l1_distance_drop_text = 0
+                    self.previous_e0_drop_text = modulated_inp.clone()
+                else: # uncond
+                    if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
                         should_calc_uncond = True
                         self.accumulated_rel_l1_distance_uncond = 0
-                self.previous_e0_uncond = modulated_inp.clone()
+                    else:
+                        rescale_func = np.poly1d(self.coefficients)
+                        self.accumulated_rel_l1_distance_uncond += rescale_func(((modulated_inp-self.previous_e0_uncond).abs().mean() / self.previous_e0_uncond.abs().mean()).cpu().item())
+                        if self.accumulated_rel_l1_distance_uncond < self.teacache_thresh:
+                            should_calc_uncond = False
+                        else:
+                            should_calc_uncond = True
+                            self.accumulated_rel_l1_distance_uncond = 0
+                    self.previous_e0_uncond = modulated_inp.clone()
 
         # arguments
         kwargs = dict(
@@ -714,9 +740,10 @@ class WanModel(ModelMixin, ConfigMixin):
             audio_embedding=audio_embedding,
             ref_target_masks=token_ref_target_masks,
             human_num=human_num,
-            )
+        )
+
         if self.enable_teacache:
-            if self.cnt%3==0:
+            if self.batched_cfg:
                 if not should_calc_cond:
                     x +=  self.previous_residual_cond
                 else:
@@ -724,22 +751,31 @@ class WanModel(ModelMixin, ConfigMixin):
                     for block in self.blocks:
                         x = block(x, **kwargs)
                     self.previous_residual_cond = x - ori_x
-            elif self.cnt%3==1:
-                if not should_calc_drop_text:
-                    x +=  self.previous_residual_drop_text
-                else:
-                    ori_x = x.clone()
-                    for block in self.blocks:
-                        x = block(x, **kwargs)
-                    self.previous_residual_drop_text = x - ori_x
             else:
-                if not should_calc_uncond:
-                    x +=  self.previous_residual_uncond
+                if self.cnt%3==0:
+                    if not should_calc_cond:
+                        x +=  self.previous_residual_cond
+                    else:
+                        ori_x = x.clone()
+                        for block in self.blocks:
+                            x = block(x, **kwargs)
+                        self.previous_residual_cond = x - ori_x
+                elif self.cnt%3==1:
+                    if not should_calc_drop_text:
+                        x +=  self.previous_residual_drop_text
+                    else:
+                        ori_x = x.clone()
+                        for block in self.blocks:
+                            x = block(x, **kwargs)
+                        self.previous_residual_drop_text = x - ori_x
                 else:
-                    ori_x = x.clone()
-                    for block in self.blocks:
-                        x = block(x, **kwargs)
-                    self.previous_residual_uncond = x - ori_x
+                    if not should_calc_uncond:
+                        x +=  self.previous_residual_uncond
+                    else:
+                        ori_x = x.clone()
+                        for block in self.blocks:
+                            x = block(x, **kwargs)
+                        self.previous_residual_uncond = x - ori_x
         else:
             for block in self.blocks:
                 x = block(x, **kwargs)

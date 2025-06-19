@@ -17,16 +17,37 @@ from .distributed.xdit_context_parallel import (
 from torch import distributed as dist
 
 @contextmanager
-def parallel_context(pipeline, ulysses_size, ring_size, para_batch_size):
+def parallel_context(pipeline):
     model = pipeline.model
 
     original_attn_forwards = []
     original_crossattn_forwards = []
     original_model_forward = model.forward
+    world_size=dist.get_world_size()
+    if world_size == 3 :
+        # If the world size is 3, we assume it is a single node with 3 GPUs
+        ulysses_size = 1
+        ring_size = 1
+        para_batch_size = 3
+    elif world_size == 1:
+        # If the world size is 1, we assume it is a single GPU
+        ulysses_size = 1
+        ring_size = 1
+        para_batch_size = 1
+    elif world_size % 2 == 0:
+        # If the world size is even, we assume it is a single node with multiple GPUs
+        ulysses_size = world_size
+        ring_size = 1
+        para_batch_size = 1
+    else:
+        raise ValueError(
+            f"Unsupported world size {world_size}. "
+            "Please use a world size of 1, 2, or an even number greater than 2."
+        )
 
     use_usp = ulysses_size > 1 or ring_size > 1
     if use_usp or para_batch_size > 1:
-        world_size=dist.get_world_size()
+
         assert ulysses_size * ring_size * para_batch_size == world_size, f"The number of ulysses_size and ring_size should be equal to the world size."
         assert para_batch_size == 1 or para_batch_size == 3, f"The para_batch_size should be 1 or 3, but got {para_batch_size}."
 

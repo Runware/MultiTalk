@@ -334,7 +334,20 @@ def usp_dit_forward_multitalk(
 
     if self.enable_teacache:
         modulated_inp = e0 if self.use_ret_steps else e
-        if bs == 3:
+        if self.batched_cfg:
+            if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
+                should_calc_cond = True
+                self.accumulated_rel_l1_distance_cond = 0
+            else:
+                rescale_func = np.poly1d(self.coefficients)
+                self.accumulated_rel_l1_distance_cond += rescale_func(((modulated_inp-self.previous_e0_cond).abs().mean() / self.previous_e0_cond.abs().mean()).cpu().item())
+                if self.accumulated_rel_l1_distance_cond < self.teacache_thresh:
+                    should_calc_cond = False
+                else:
+                    should_calc_cond = True
+                    self.accumulated_rel_l1_distance_cond = 0
+            self.previous_e0_cond = modulated_inp.clone()
+        else:
             if self.cnt%3==0: # cond
                 if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
                     should_calc_cond = True
@@ -342,7 +355,6 @@ def usp_dit_forward_multitalk(
                 else:
                     rescale_func = np.poly1d(self.coefficients)
                     self.accumulated_rel_l1_distance_cond += rescale_func(((modulated_inp-self.previous_e0_cond).abs().mean() / self.previous_e0_cond.abs().mean()).cpu().item())
-                    # print("accumulated_rel_l1_distance_even", self.accumulated_rel_l1_distance_even)
                     if self.accumulated_rel_l1_distance_cond < self.teacache_thresh:
                         should_calc_cond = False
                     else:
@@ -375,21 +387,6 @@ def usp_dit_forward_multitalk(
                         should_calc_uncond = True
                         self.accumulated_rel_l1_distance_uncond = 0
                 self.previous_e0_uncond = modulated_inp.clone()
-        elif bs == 1:
-            if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
-                should_calc_cond = True
-                self.accumulated_rel_l1_distance_cond = 0
-            else:
-                rescale_func = np.poly1d(self.coefficients)
-                self.accumulated_rel_l1_distance_cond += rescale_func(((modulated_inp-self.previous_e0_cond).abs().mean() / self.previous_e0_cond.abs().mean()).cpu().item())
-                if self.accumulated_rel_l1_distance_cond < self.teacache_thresh:
-                    should_calc_cond = False
-                else:
-                    should_calc_cond = True
-                    self.accumulated_rel_l1_distance_cond = 0
-            self.previous_e0_cond = modulated_inp.clone()
-        else:
-            raise ValueError(f"Unsupported batch size {bs} for teacache.")
 
     ## CFG Parallel
     grid_sizes = torch.chunk(
@@ -431,7 +428,15 @@ def usp_dit_forward_multitalk(
     )[get_sequence_parallel_rank()]
 
     if self.enable_teacache:
-        if bs == 3:
+        if self.batched_cfg:
+            if not should_calc_cond:
+                x +=  self.previous_residual_cond
+            else:
+                ori_x = x.clone()
+                for block in self.blocks:
+                    x = block(x, **kwargs)
+                self.previous_residual_cond = x - ori_x
+        else:
             if self.cnt%3==0:
                 if not should_calc_cond:
                     x +=  self.previous_residual_cond
@@ -456,14 +461,6 @@ def usp_dit_forward_multitalk(
                     for block in self.blocks:
                         x = block(x, **kwargs)
                     self.previous_residual_uncond = x - ori_x
-        elif bs == 1:
-            if not should_calc_cond:
-                x +=  self.previous_residual_cond
-            else:
-                ori_x = x.clone()
-                for block in self.blocks:
-                    x = block(x, **kwargs)
-                self.previous_residual_cond = x - ori_x
     else:
         for block in self.blocks:
             x = block(x, **kwargs)

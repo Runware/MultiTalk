@@ -331,7 +331,10 @@ class MultiTalkPipeline(nn.Module):
             self.model.teacache_init(
                 sample_steps=sampling_steps,
                 teacache_thresh=extra_args.teacache_thresh,
-                model_scale=extra_args.size,
+                model_scale=size_buckget,
+                batched_cfg=batched_cfg,
+                cache_start_step=extra_args.cache_start_step,
+                cache_end_step=extra_args.cache_end_step,
             )
         else:
             self.model.disable_teacache()
