@@ -103,6 +103,7 @@ We propose **MultiTalk** , a novel framework for audio-driven multi-person conve
 - [ ] TTS integration
 - [ ] Gradio demo
 - [ ] ComfyUI
+- [ ] 1.3B model
 
 ## Quick Start
 
